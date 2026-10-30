@@ -22,7 +22,7 @@ Pick the funnier card in head-to-head battles and discover the winners.
 
 ## Features
 
-- Head-to-head meme voting
+- Fourteen starter memes and head-to-head voting
 - Winners board
 - Image submissions with approval before publication
 
