@@ -89,3 +89,7 @@ Image submissions accept an optional description up to 240 characters. It is use
 У загрузки есть описание до 240 символов для alt; модератор может исправить его без смены статуса. Старые записи используют заголовок, пользовательский текст автоматически не переводится.
 
 Startup diagnostics / Проверка запуска: `node server/index.mjs --check` checks the local address, configuration and writable data location without creating a database or starting the API. To use another port: `--port 3005`. No tokens are printed. / База и сервер при проверке не создаются; секреты не выводятся.
+
+## Если картинка пропала
+
+Для неизвестной, удалённой и временно недоступной картинки предусмотрены разные действия восстановления. Ошибка обновления сохраняет прежние карточки. Повтор того же голоса не считается дважды, в том числе после перезапуска. [Контракт медиа и повторов](OPERATIONS.md#media-availability-and-safe-retry).

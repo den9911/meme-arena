@@ -1,3 +1,4 @@
+import {mediaResource,mediaError} from './media.mjs';
 import {checkStartup} from './startup.mjs';
 import { createServer } from 'node:http';
 import { randomUUID, randomBytes, createHmac, timingSafeEqual, createHash } from 'node:crypto';
@@ -11,6 +12,10 @@ import { apps, questions, scenes, dayKey, dayNumber, dailyPuzzle } from './conte
 import { HttpError, text, integer, validDay, decodeImage } from './validation.mjs';
 import { primaryApp } from './project.mjs';
 
+function staticFileError(error){
+  if(error.code==='ENOENT'||error.code==='ENOTDIR')throw new HttpError(404,'Страница не найдена.');
+  throw error;
+}
 const zip = promisify(gzip);
 const publicRoot = fileURLToPath(new URL('../public/', import.meta.url));
 const MIME = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.svg':'image/svg+xml', '.json':'application/json; charset=utf-8', '.ico':'image/x-icon' };
@@ -30,6 +35,7 @@ export async function createApp(options = {}) {
     }
   }
   const db = openStore(resolve(dataDir,'minute.sqlite'));
+  let reportedFailure=false;
   const appId=options.appId ?? process.env.APP_ID ?? primaryApp;
   if (appId && ![...apps.map(a=>a[0]),'mischief'].includes(appId)) throw new Error('Unknown APP_ID');
   const adminToken = options.adminToken ?? process.env.ADMIN_TOKEN ?? '';
@@ -63,14 +69,14 @@ export async function createApp(options = {}) {
     res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
     res.end(JSON.stringify(value));
   }
-  async function body(req) {
-    if (Number(req.headers['content-length'])>700000) {req.resume();throw new HttpError(413,'Слишком большой запрос.');}
+  async function body(req,maximum=700000) {
+    if (Number(req.headers['content-length'])>maximum) {req.resume();throw new HttpError(413,'Слишком большой запрос.');}
     if (!req.headers['content-type']?.startsWith('application/json')) throw new HttpError(415,'Нужен JSON.');
     const expected = origin || `http://${req.headers.host}`;
     if (req.headers.origin && req.headers.origin !== new URL(expected).origin) throw new HttpError(403,'Чужой источник запроса.');
     if (req.headers['sec-fetch-site'] === 'cross-site') throw new HttpError(403,'Чужой источник запроса.');
     const chunks=[]; let bytes=0;
-    for await (const chunk of req) { bytes+=chunk.length; if (bytes>700000) throw new HttpError(413,'Слишком большой запрос.'); chunks.push(chunk); }
+    for await (const chunk of req) { bytes+=chunk.length; if (bytes>maximum) throw new HttpError(413,'Слишком большой запрос.'); chunks.push(chunk); }
     try { const result=JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!result || Array.isArray(result) || typeof result!=='object') throw new Error(); return result; }
     catch { throw new HttpError(400,'Некорректный JSON.'); }
   }
@@ -80,8 +86,12 @@ export async function createApp(options = {}) {
   }
   function approvedPost(id,kind) {
     text(id,50);
-    const row=db.prepare('SELECT id FROM posts WHERE id=? AND kind=? AND status=?').get(id,kind,'approved');
-    if (!row) throw new HttpError(404,'Публикация не найдена.');
+    const row=db.prepare('SELECT id,bytes,image IS NOT NULL AS hasImage FROM posts WHERE id=? AND kind=? AND status=?').get(id,kind,'approved');
+    if (!row) {
+      if(kind==='arena'&&db.prepare('SELECT id FROM public_media_gone WHERE id=? AND kind=?').get(id,kind))throw mediaError(410);
+      throw new HttpError(404,'Публикация не найдена.');
+    }
+    if(kind==='arena'&&row.bytes>0&&!row.hasImage)throw mediaError(410);
     return row;
   }
   function pollResult(id,sid) {
@@ -116,7 +126,7 @@ export async function createApp(options = {}) {
       if (path.startsWith('/api/')) {
         throttle(req,req.method === 'POST' ? 'write':'read',req.method === 'POST' ? 40:240);
         const sid=session(req,res);
-        const input=req.method === 'POST' ? await body(req) : null;
+        const input=req.method === 'POST' ? await body(req,path==='/api/arena/vote'?1024:700000) : null;
         const method=req.method;
         if (path==='/api/config' && method==='GET') return json(res,{apps:appId?apps.filter(a=>a[0]===appId):apps,day:today(),timezone,maxImageBytes:500000});
         if (path==='/api/captions' && method==='GET') {
@@ -148,21 +158,26 @@ export async function createApp(options = {}) {
           once('majority',String(input.id),sid,input.choice); return json(res,{ok:true});
         }
         if (path==='/api/arena' && method==='GET') {
-          const candidates=db.prepare(`SELECT ${postFields} FROM posts WHERE kind='arena' AND status='approved' ORDER BY created DESC LIMIT 100`).all();
+          const candidates=db.prepare(`SELECT ${postFields} FROM posts WHERE kind='arena' AND status='approved' AND NOT (bytes>0 AND image IS NULL) ORDER BY created DESC LIMIT 100`).all();
           const used=new Set(db.prepare("SELECT target FROM votes WHERE scope='arena' AND voter=?").all(sid).map(r=>r.target));
           let pair=null;
           for (let i=0;i<candidates.length && !pair;i++) for (let j=i+1;j<candidates.length;j++) {
             const key=[candidates[i].id,candidates[j].id].sort().join(':');
             if (!used.has(key)) { pair=[candidates[i],candidates[j]]; break; }
           }
-          const leaders=db.prepare(`SELECT ${postFields} FROM posts WHERE kind='arena' AND status='approved' ORDER BY votes DESC,created LIMIT 6`).all();
+          const leaders=db.prepare(`SELECT ${postFields} FROM posts WHERE kind='arena' AND status='approved' AND NOT (bytes>0 AND image IS NULL) ORDER BY votes DESC,created LIMIT 6`).all();
           return json(res,{pair,leaders});
         }
         if (path==='/api/arena/vote' && method==='POST') {
           const a=text(input.a,50), b=text(input.b,50), winner=text(input.winner,50);
           if (a===b || ![a,b].includes(winner)) throw new HttpError(400,'Некорректная пара.');
-          transaction(db,()=>{approvedPost(a,'arena'); approvedPost(b,'arena'); once('arena',[a,b].sort().join(':'),sid,winner); db.prepare('UPDATE posts SET votes=votes+1 WHERE id=?').run(winner);});
-          return json(res,{ok:true});
+          const duplicate=transaction(db,()=>{
+            const target=[a,b].sort().join(':'),previous=db.prepare("SELECT choice FROM votes WHERE scope='arena' AND target=? AND voter=?").get(target,sid);
+            if(previous){if(previous.choice!==winner)throw new HttpError(409,'Ваш голос уже учтён.');return true;}
+            approvedPost(a,'arena');approvedPost(b,'arena');once('arena',target,sid,winner);
+            db.prepare('UPDATE posts SET votes=votes+1 WHERE id=?').run(winner);return false;
+          });
+          return json(res,{ok:true,duplicate});
         }
         if (path==='/api/posts' && method==='POST') {
           throttle(req,'publish',8);
@@ -278,18 +293,15 @@ export async function createApp(options = {}) {
         throw new HttpError(404,'Адрес не найден.');
       }
       if (path.startsWith('/media/')) {
-        const id=path.slice(7);
-        const row=db.prepare('SELECT image,mime,status,owner FROM posts WHERE id=? AND image IS NOT NULL').get(id);
-        if (!row) throw new HttpError(404,'Картинка не найдена.');
-        if (row.status!=='approved') {
-          // Private pending images require the moderator key; no caching of private responses.
-          checkAdmin(req);
-        }
+        const id=path.slice(7),metadata=mediaResource(db,id,()=>checkAdmin(req),appId);
         const etag=`"${id}"`;
-        res.setHeader('Cache-Control',row.status==='approved'?'public, max-age=3600':'no-store');
-        if (row.status==='approved' && req.headers['if-none-match']===etag) {res.writeHead(304);return res.end();}
-        res.writeHead(200,{'Content-Type':row.mime,'Content-Length':row.image.length,'ETag':etag});
-        return res.end(req.method==='HEAD' ? undefined : Buffer.from(row.image));
+        res.setHeader('Cache-Control',metadata.status==='approved'?'public, max-age=0, must-revalidate':'no-store');
+        if (metadata.status==='approved' && req.headers['if-none-match']===etag) {res.writeHead(304);return res.end();}
+        if(req.method==='HEAD'){res.writeHead(200,{'Content-Type':metadata.mime,'Content-Length':metadata.imageBytes,'ETag':etag});return res.end();}
+        const image=db.prepare('SELECT image FROM posts WHERE id=?').get(id)?.image;
+        if(!image)throw mediaError(410);
+        res.writeHead(200,{'Content-Type':metadata.mime,'Content-Length':image.length,'ETag':etag});
+        return res.end(req.method==='HEAD' ? undefined : Buffer.from(image));
       }
       let filePath;
       try { filePath=decodeURIComponent(path); } catch { throw new HttpError(400,'Некорректный адрес.'); }
@@ -300,9 +312,9 @@ export async function createApp(options = {}) {
       if (!type) throw new HttpError(404,'Страница не найдена.');
       let cached=cache.get(filename);
       // In development refresh the cache when the source file changes.
-      const info=await stat(filename);
+      const info=await stat(filename).catch(staticFileError);
       if (!cached || cached.mtime!==info.mtimeMs) {
-        const buffer=await readFile(filename);
+        const buffer=await readFile(filename).catch(staticFileError);
         cached={buffer,gz:await zip(buffer),mtime:info.mtimeMs,etag:`"${createHash('sha256').update(buffer).digest('hex').slice(0,16)}"`};cache.set(filename,cached);
       }
       const compressed=/\bgzip\b/.test(req.headers['accept-encoding']??'');
@@ -314,10 +326,11 @@ export async function createApp(options = {}) {
       if (compressed) res.setHeader('Content-Encoding','gzip');
       res.writeHead(200,{'Content-Type':type,'Content-Length':bytes.length});res.end(req.method==='HEAD'?undefined:bytes);
     } catch (error) {
+      if(req.aborted||res.destroyed)return;
       if (res.headersSent) return res.end();
-      const status=error.status ?? (error.code==='ENOENT' || error.code==='ENOTDIR' ? 404:500);
-      if (status===500) console.error(error);
-      json(res,{error:status===500?'Что-то пошло не так. Попробуйте ещё раз.':status===404?'Не найдено.':error.message},status);
+      const status=error instanceof HttpError?error.status:500;
+      if(status===500&&!reportedFailure){console.error('Request processing failed; inspect server storage and retry');reportedFailure=true;}
+      json(res,{error:status===500?'Что-то пошло не так. Попробуйте ещё раз.':error.message,code:status===500?'internal_error':error.publicCode??'request_rejected'},status);
     }
   });
   server.requestTimeout=15000; server.headersTimeout=10000; server.maxHeadersCount=60;

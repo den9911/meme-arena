@@ -21,3 +21,7 @@
   @media(max-width:420px){.app-grid{grid-template-columns:1fr}.card-top{min-height:70px}.card-symbol{width:58px;height:58px}.finds-grid{grid-template-columns:1fr}.leader-grid{grid-template-columns:1fr}.home-intro h1{font-size:3.8rem}.hero-symbol{display:none}}
   @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
 }
+
+@layer components {
+  .media-failure{padding:20px;min-height:180px;justify-items:start;align-content:center;background:var(--paper);color:var(--ink);border:1px dashed var(--muted);overflow-wrap:anywhere}
+}

@@ -16,6 +16,14 @@ export function openStore(filename) {
     );
     CREATE INDEX IF NOT EXISTS posts_feed ON posts(kind,status,created DESC);
     CREATE INDEX IF NOT EXISTS posts_day ON posts(day,kind,status,votes DESC);
+    CREATE TABLE IF NOT EXISTS public_media_gone (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL
+    );
+    CREATE TRIGGER IF NOT EXISTS posts_retire_public_media AFTER DELETE ON posts
+      WHEN OLD.status='approved' AND OLD.kind IN ('arena','finds')
+        AND (OLD.image IS NOT NULL OR OLD.bytes>0) AND length(OLD.id) BETWEEN 1 AND 50 BEGIN
+      INSERT OR IGNORE INTO public_media_gone(id,kind) VALUES(OLD.id,OLD.kind);
+    END;
     CREATE TABLE IF NOT EXISTS votes (
       scope TEXT NOT NULL, target TEXT NOT NULL, voter TEXT NOT NULL,
       choice TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL,

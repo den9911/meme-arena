@@ -134,7 +134,7 @@ test('all community workflows persist and enforce their invariants',async t=>{
     assert.equal((await bob('/api/report',{id:imageId,reason:'Проверка жалобы'})).status,200);
     assert.equal((await alice('/api/admin',undefined,admin)).body.posts[0].reports,1);
     assert.equal((await alice('/api/admin/moderate',{id:imageId,action:'delete'},admin)).status,200);
-    assert.equal((await bob(`/media/${imageId}`)).status,404);assert.equal((await alice('/api/admin',undefined,admin)).body.usage,0);
+    assert.equal((await bob(`/media/${imageId}`)).status,410);assert.equal((await alice('/api/admin',undefined,admin)).body.usage,0);
     assert.equal((await alice('/api/posts',{kind:'finds',title:'x',category:'Другое',image:'x'})).status,400);
     assert.equal((await alice('/api/posts',{kind:'bad',title:'x',image:png})).status,400);
     assert.equal((await alice('/api/posts',{kind:'finds',title:'x',category:'invalid',image:png})).status,400);

@@ -510,3 +510,12 @@ Cookies и черновики|Cookies and drafts
 Описание изображения|Image description
 Коротко опишите, что видно на картинке|Briefly describe what is visible in the image
 Сохранить описание|Save description
+Картинка не найдена. Обновите арену.|Image not found. Refresh the arena.
+Эта картинка удалена. Обновите арену.|This image was removed. Refresh the arena.
+Картинку не удалось прочитать.|This image could not be decoded.
+Картинка временно недоступна. Можно повторить загрузку.|This image is temporarily unavailable. You can retry loading it.
+Повторить картинку|Retry image
+Обновить арену|Refresh arena
+Не удалось обновить. Проверьте соединение и повторите.|Could not refresh. Check your connection and retry.
+Не удалось обновить арену. Проверьте соединение и повторите; предыдущие карточки сохранены.|Could not refresh the arena. Check your connection and retry; previous cards are preserved.
+Повторить обновление|Retry refresh

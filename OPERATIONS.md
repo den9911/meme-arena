@@ -89,3 +89,17 @@ node --test --experimental-test-coverage tests/server.test.mjs
 ```
 
 UI interactions must also be checked in a real browser. Automated server coverage does not measure browser canvas behavior, mobile layout, or abuse resistance under a production workload.
+
+## Media availability and safe retry
+
+`/media/:id` distinguishes **404** (unknown media or a text-only seed), **410** (a known, previously approved image was deleted or its recorded payload is missing), and **500** (storage/read failure). Public JSON error codes are `media_missing`, `media_gone`, and `internal_error`; private SQLite details never appear in the response or application warning. Expected private images still require the moderator key and return `no-store`. An empty arena is `200` with `pair: null`, not a storage-error fallback.
+
+The additive `public_media_gone(id,kind)` table records only IDs of previously public image posts deleted after this upgrade. An SQLite delete trigger writes that minimal record in the same statement transaction. If the record cannot be saved, the deletion rolls back. No title, image, owner or private pending-post history is retained there. Earlier deletions cannot be reconstructed and remain 404. Keep the usual verified database backup before upgrading. Tombstones intentionally persist with publication history; this change does not add a global database-retention quota or delete user data to enforce one.
+
+Authorization and indexed metadata checks precede BLOB reads and ETag evaluation. HEAD and 304 do not load image payloads; a missing/removed image never returns 304. IDs are capped at 50 ASCII URL-safe characters, payloads at the existing 500,000-byte upload contract. Oversized legacy data fails as a server error without reading its BLOB. Public image responses now require revalidation; caches populated under the previous one-hour policy may keep an old image until that earlier lifetime expires. Already downloaded copies cannot be recalled.
+
+A broken card performs one HEAD check with a four-second timeout. Unknown/removed images offer **Refresh arena**; network/storage/decode failures offer up to two explicit **Retry image** attempts, then refresh. There is no automatic retry loop. At most eight image slots are rendered (two contenders and six leaders), and outstanding checks are aborted on replacement/page exit. An API refresh failure preserves existing cards and the upload form with an explicit retry control; it is never displayed as an empty arena.
+
+POST `/api/arena/vote` is limited to 1024 bytes. The canonical pair plus signed browser session identifies its receipt. The same winner returns `duplicate: true` without incrementing again, including after restart or a lost acknowledgement; a different winner remains 409. The two contenders, receipt insert and winner increment stay in one SQLite transaction. Pending vote controls are locked; no optimistic counts or automatic second POST are used. Moderation deletion remains safe to repeat and cannot decrement disk usage twice. Sessions are not verified people, and pairing fairness/rating changes are outside this work.
+
+Validation adds actual HTTP/SQLite tests for media status, privacy, conditional requests, HEAD without BLOB, rollback on failed retirement, restart, bounded inputs and vote replay. These are finite functional checks, not production load, physical power-loss or full browser/platform certification.

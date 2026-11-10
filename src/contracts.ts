@@ -9,3 +9,6 @@ export type MajorityResponse = MajorityList | VoteReceipt;
 export function isMajorityList(value: MajorityResponse): value is MajorityList { return 'questions' in value; }
 export interface Stroke { color: string; points: Array<readonly [number, number]> }
 export type DrawingState = { status: 'idle' } | { status: 'drawing'; deadline: number; strokes: Stroke[] } | { status: 'finished'; strokes: Stroke[] };
+
+export type MediaFailureCode = 'media_missing' | 'media_gone' | 'internal_error';
+export interface ArenaVoteReceipt { ok: true; duplicate: boolean }
