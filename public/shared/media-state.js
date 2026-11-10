@@ -14,6 +14,7 @@ export function wireMedia(root,onRefresh){
       let status=0;
       try{status=(await fetch(img.currentSrc||img.src,{method:'HEAD',cache:'no-store',signal:AbortSignal.any([lifetime.signal,AbortSignal.timeout(4000)])})).status;}catch{}
       if(lifetime.signal.aborted||!img.isConnected)return;
+      if(status===404||status===410)img.closest('#battle')?.querySelectorAll('.pick').forEach(button=>{button.dataset.lock='true';button.disabled=true;});
       const state=mediaFailure(status),panel=document.createElement('div'),message=document.createElement('p'),button=document.createElement('button');
       panel.className='media-failure stack';panel.dataset.status=String(status);message.textContent=state.message;
       button.className='secondary';button.type='button';button.textContent=state.retry&&attempt<2?'Повторить картинку':'Обновить арену';

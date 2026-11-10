@@ -3,7 +3,7 @@ import {wireMedia} from '/locales/en/shared/media-state.js';
 export async function mount() {
   let loading=false,voting=false,disposeMedia=()=>{};
   $('#app').innerHTML=`<section><div class="section-head"><h2>Go with your first laugh</h2><span class="small muted">One vote per pair</span></div><div id="arena-status" class="note stack" role="status" hidden></div><div id="battle"></div></section><section class="section-gap"><div class="section-head"><h2>The winners’ board</h2><button id="refresh" class="secondary">Refresh</button></div><div class="leader-grid" id="leaders"></div></section><section class="section-gap split"><div class="stack"><h2>Step into the arena</h2><p class="muted">Submit your meme. Once approved, it joins the battles.</p><p class="small muted">We count head-to-head wins. Simple votes, no hidden ranking.</p></div>${uploadForm('arena')}</section>`;
-  function lock(){const blocked=loading||voting;$$('.pick,#refresh,#retry-arena,.media-failure button').forEach(button=>button.disabled=blocked);}
+  function lock(){const blocked=loading||voting;$$('.pick,#refresh,#retry-arena,.media-failure button').forEach(button=>button.disabled=blocked||button.dataset.lock==='true');}
   async function load(){
     if(loading)return false;loading=true;lock();
     try{
