@@ -103,3 +103,8 @@ A broken card performs one HEAD check with a four-second timeout. Unknown/remove
 POST `/api/arena/vote` is limited to 1024 bytes. The canonical pair plus signed browser session identifies its receipt. The same winner returns `duplicate: true` without incrementing again, including after restart or a lost acknowledgement; a different winner remains 409. The two contenders, receipt insert and winner increment stay in one SQLite transaction. Pending vote controls are locked; no optimistic counts or automatic second POST are used. Moderation deletion remains safe to repeat and cannot decrement disk usage twice. Sessions are not verified people, and pairing fairness/rating changes are outside this work.
 
 Validation adds actual HTTP/SQLite tests for media status, privacy, conditional requests, HEAD without BLOB, rollback on failed retirement, restart, bounded inputs and vote replay. These are finite functional checks, not production load, physical power-loss or full browser/platform certification.
+
+
+## Recovery verification — 11 November
+
+Real child exits before/after COMMIT preserve respectively zero/one votes. Forty partial TCP bodies release connections; SQL-trigger rejection rolls back and retry after restart increments once. Diagnostics remain fixed and bounded. These are finite regression checks, not load or hardware power-loss guarantees.
